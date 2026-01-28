@@ -4,6 +4,7 @@ Run this file to start the server, then open http://localhost:5001 in your brows
 """
 
 from flask import Flask, render_template, Response, jsonify
+from flask_cors import CORS
 import os
 import threading
 import time
@@ -33,10 +34,13 @@ import base64
 app = Flask(__name__, static_folder='.', static_url_path='')
 app.config['SECRET_KEY'] = 'spectra_secret_key'
 
+# Enable CORS for all routes (allows frontend on Vercel to connect to local/VPS backend)
+CORS(app, resources={r"/*": {"origins": "*"}})
+
 # Only initialize SocketIO if not on Vercel
 if not IS_VERCEL and CV_AVAILABLE:
     from flask_socketio import SocketIO, emit
-    socketio = SocketIO(app, cors_allowed_origins="*")
+    socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 else:
     socketio = None
 
@@ -289,6 +293,7 @@ search_target = None
 last_spoken_person = None
 tts_lock = threading.Lock()
 tts_speaking = False
+tts_enabled = True  # TTS toggle - can be turned off via socket event
 
 # Path to save/load face encodings
 ENCODINGS_FILE = "face_encodings.pkl"
@@ -296,6 +301,10 @@ ENCODINGS_FILE = "face_encodings.pkl"
 def speak_text(text):
     """Speak text aloud using macOS say command (only works locally, not on Vercel)."""
     if IS_VERCEL:
+        return
+
+    if not tts_enabled:
+        print(f"  [TTS] Disabled, skipping: {text}")
         return
 
     global tts_speaking
@@ -838,6 +847,13 @@ if socketio:
         print(f"Chat query: {query}")
         response = generate_llm_response(query)
         emit('chat_response', {'response': response})
+
+    @socketio.on('toggle_tts')
+    def handle_toggle_tts(data):
+        global tts_enabled
+        tts_enabled = data.get('enabled', True)
+        print(f"TTS {'enabled' if tts_enabled else 'disabled'}")
+        emit('tts_status', {'enabled': tts_enabled})
 
 
 # ================================

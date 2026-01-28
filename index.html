@@ -1861,7 +1861,7 @@
                     <div class="photo-container">
                         <div class="photo-frame" id="photo-frame">
                             <div class="scan-line"></div>
-                            <img id="video-feed" class="video-feed" src="/video_feed" alt="Live Feed">
+                            <img id="video-feed" class="video-feed" src="" alt="Live Feed">
                             <div class="photo-placeholder" id="photo-placeholder">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
                                     <circle cx="12" cy="8" r="4"/>
@@ -1944,6 +1944,10 @@
                                 <div class="key-item">
                                     <span class="key">ESC</span>
                                     <span class="key-desc">Abort</span>
+                                </div>
+                                <div class="key-item">
+                                    <span class="key">T</span>
+                                    <span class="key-desc">Toggle TTS</span>
                                 </div>
                                 <div class="help-divider"></div>
                                 <div class="help-section-title">NAVIGATION</div>
@@ -2195,14 +2199,42 @@
         let deviceLocation = { lat: null, lon: null };
         let socket = null;
         let isConnected = false;
+        let ttsEnabled = true;  // TTS toggle state
 
         // Identification history storage
         let identificationHistory = JSON.parse(localStorage.getItem('spectraHistory') || '[]');
 
+        // ==================== BACKEND CONFIGURATION ====================
+        // Configure your backend server URL here
+        // For local development: 'http://localhost:5001'
+        // For VPS deployment: 'https://your-vps-domain.com:5001'
+        // Default: Medha's Mac IP address
+        const BACKEND_URL = localStorage.getItem('spectraBackendUrl') || 'http://172.20.40.64:5001';
+
+        // Helper to get full backend URL for API/video endpoints
+        function getBackendUrl(path) {
+            if (BACKEND_URL) {
+                return BACKEND_URL + path;
+            }
+            return path;
+        }
+
+        // Function to update backend URL (can be called from console or settings)
+        function setBackendUrl(url) {
+            localStorage.setItem('spectraBackendUrl', url);
+            console.log('Backend URL set to:', url || '(same origin)');
+            console.log('Refresh the page to apply changes.');
+        }
+
         // ==================== SOCKET.IO CONNECTION ====================
         function initSocketIO() {
-            // Connect to the Flask server
-            socket = io();
+            // Connect to the Flask server (use configured backend URL)
+            const socketUrl = BACKEND_URL || window.location.origin;
+            console.log('Connecting to backend:', socketUrl);
+            socket = io(socketUrl, {
+                transports: ['websocket', 'polling'],
+                withCredentials: BACKEND_URL ? true : false
+            });
 
             socket.on('connect', function() {
                 console.log('Connected to SPECTRA server');
@@ -2239,6 +2271,12 @@
             // Handle search results for locate page
             socket.on('search_result', function(data) {
                 handleSearchResult(data);
+            });
+
+            // Handle TTS status updates
+            socket.on('tts_status', function(data) {
+                ttsEnabled = data.enabled;
+                console.log('TTS status:', ttsEnabled ? 'enabled' : 'disabled');
             });
         }
 
@@ -2306,7 +2344,7 @@
             if (isConnected) {
                 videoFeed.style.display = 'block';
                 placeholder.style.display = 'none';
-                videoFeed.src = '/video_feed_search?' + new Date().getTime();
+                videoFeed.src = getBackendUrl('/video_feed_search?' + new Date().getTime());
             }
         }
 
@@ -2341,7 +2379,7 @@
             placeholder.classList.add('hidden');
 
             // Force reload the video feed
-            videoFeed.src = '/video_feed?' + new Date().getTime();
+            videoFeed.src = getBackendUrl('/video_feed?' + new Date().getTime());
         }
 
         function stopVideoFeed() {
@@ -2374,24 +2412,16 @@
             void photoFrame.offsetWidth; // Trigger reflow
 
             if (isCriminal) {
-                // CRIMINAL DETECTED - Red effects
+                // CRIMINAL DETECTED - Red border effects (no flash)
                 photoFrame.classList.add('criminal');
                 photoSection.classList.add('criminal-mode');
                 dataSection.classList.add('criminal-mode');
-
-                // Create and add red flash overlay
-                const flashOverlay = document.createElement('div');
-                flashOverlay.className = 'criminal-flash-overlay';
-                document.body.appendChild(flashOverlay);
-
-                // Remove flash after animation completes
-                setTimeout(() => flashOverlay.remove(), 1500);
 
                 // Override designation to criminal
                 data.designation = 'criminal';
 
                 // Add warning to terminal
-                addTerminalLine(`> ⚠️ CRIMINAL DETECTED: ${data.name}`, 'error');
+                addTerminalLine(`> CRIMINAL DETECTED: ${data.name}`, 'error');
                 addTerminalLine(`  THREAT LEVEL: CRITICAL`, 'error');
                 addTerminalLine(`  STATUS: AT LARGE`, 'warning');
             } else {
@@ -3032,8 +3062,20 @@
                 }, 500);
             } else if (key === 'escape') {
                 addTerminalLine('[ABORT] Operation cancelled by user', 'error');
+            } else if (key === 't') {
+                toggleTTS();
             }
         });
+
+        // ==================== TTS TOGGLE ====================
+        function toggleTTS() {
+            ttsEnabled = !ttsEnabled;
+            if (socket && isConnected) {
+                socket.emit('toggle_tts', { enabled: ttsEnabled });
+            }
+            const status = ttsEnabled ? 'ENABLED' : 'DISABLED';
+            addTerminalLine(`> Text-to-Speech: ${status}`, ttsEnabled ? 'success' : 'warning');
+        }
 
         // Designation toggle
         document.querySelectorAll('.designation-btn').forEach(btn => {
