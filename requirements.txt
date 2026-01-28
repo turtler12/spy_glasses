@@ -1,0 +1,6 @@
+flask
+flask-socketio
+opencv-python
+face_recognition
+Pillow
+numpy

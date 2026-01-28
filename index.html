@@ -1,0 +1,3214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPECTRA // Intelligence System</title>
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.0/socket.io.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #00ff88;
+            --secondary: #00ccff;
+            --danger: #ff3366;
+            --warning: #ffaa00;
+            --bg-dark: #0a0a0f;
+            --bg-panel: #12121a;
+            --border: #1a1a2e;
+            --text: #e0e0e0;
+            --text-dim: #666680;
+        }
+
+        body {
+            font-family: 'Share Tech Mono', monospace;
+            background: var(--bg-dark);
+            color: var(--text);
+            min-height: 100vh;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Scanline effect */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: repeating-linear-gradient(
+                0deg,
+                transparent,
+                transparent 2px,
+                rgba(0, 255, 136, 0.03) 2px,
+                rgba(0, 255, 136, 0.03) 4px
+            );
+            pointer-events: none;
+            z-index: 1000;
+        }
+
+        /* Grid background */
+        body::after {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image:
+                linear-gradient(rgba(0, 255, 136, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 255, 136, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        /* Page container for switching views */
+        .page {
+            display: none;
+        }
+
+        .page.active {
+            display: block;
+        }
+
+        .main-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: 1.4fr 1fr;
+            height: calc(100vh - 90px);
+            padding: 15px;
+            padding-bottom: 70px;
+            gap: 15px;
+        }
+
+        /* Left Panel - Subject Info */
+        .left-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .panel {
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .panel::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--primary), transparent);
+        }
+
+        .panel-header {
+            background: rgba(0, 255, 136, 0.1);
+            padding: 12px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .panel-header .status-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--primary);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; box-shadow: 0 0 10px var(--primary); }
+            50% { opacity: 0.5; box-shadow: 0 0 5px var(--primary); }
+        }
+
+        .panel-header h2 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 3px;
+            color: var(--primary);
+        }
+
+        .panel-content {
+            padding: 20px;
+        }
+
+        /* Subject Photo Section */
+        .photo-section {
+            display: flex;
+            flex-direction: column;
+            min-height: 300px;
+        }
+
+        .photo-section .panel-content {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding-bottom: 20px;
+        }
+
+        .photo-container {
+            position: relative;
+            width: 100%;
+            max-width: 400px;
+            height: 320px;
+            margin-bottom: 40px;
+        }
+
+        .photo-frame {
+            width: 100%;
+            height: 100%;
+            border: 2px solid var(--primary);
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, rgba(0, 255, 136, 0.05), transparent);
+        }
+
+        .photo-frame::before,
+        .photo-frame::after {
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--primary);
+        }
+
+        .photo-frame::before {
+            top: -5px;
+            left: -5px;
+            border-right: none;
+            border-bottom: none;
+        }
+
+        .photo-frame::after {
+            bottom: -5px;
+            right: -5px;
+            border-left: none;
+            border-top: none;
+        }
+
+        .photo-placeholder {
+            width: 90%;
+            height: 90%;
+            background: linear-gradient(180deg, #1a1a2e 0%, #0a0a0f 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-dim);
+        }
+
+        .photo-placeholder svg {
+            width: 80px;
+            height: 80px;
+            stroke: var(--primary);
+            opacity: 0.5;
+        }
+
+        .photo-placeholder span {
+            margin-top: 10px;
+            font-size: 10px;
+            letter-spacing: 2px;
+        }
+
+        /* Video feed styles */
+        .video-feed {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: none;
+        }
+
+        .video-feed.active {
+            display: block;
+        }
+
+        .photo-placeholder.hidden {
+            display: none;
+        }
+
+        /* Connection status indicator */
+        .connection-status {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 10px;
+            color: var(--text-dim);
+            z-index: 10;
+        }
+
+        .connection-status .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--danger);
+        }
+
+        .connection-status .status-indicator.connected {
+            background: var(--primary);
+            animation: pulse 2s infinite;
+        }
+
+        /* Person identified animation */
+        @keyframes identifiedPulse {
+            0% { box-shadow: 0 0 0 0 rgba(0, 255, 136, 0.7); }
+            70% { box-shadow: 0 0 0 15px rgba(0, 255, 136, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(0, 255, 136, 0); }
+        }
+
+        .photo-frame.identified {
+            animation: identifiedPulse 1s ease-out;
+            border-color: var(--primary);
+        }
+
+        /* Extra info panel */
+        .extra-info-panel {
+            margin-top: 15px;
+            padding: 15px;
+            background: rgba(0, 255, 136, 0.05);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+
+        .extra-info-panel h4 {
+            font-size: 11px;
+            color: var(--primary);
+            letter-spacing: 2px;
+            margin-bottom: 10px;
+        }
+
+        .extra-info-item {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            padding: 4px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .extra-info-item:last-child {
+            border-bottom: none;
+        }
+
+        .extra-info-key {
+            color: var(--text-dim);
+            text-transform: uppercase;
+        }
+
+        .extra-info-value {
+            color: var(--text);
+            text-align: right;
+            max-width: 60%;
+        }
+
+        .scan-line {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: linear-gradient(90deg, transparent, var(--primary), transparent);
+            animation: scan 3s linear infinite;
+        }
+
+        @keyframes scan {
+            0% { top: 0; opacity: 1; }
+            100% { top: 100%; opacity: 0.3; }
+        }
+
+        .photo-coords {
+            position: absolute;
+            bottom: -35px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 11px;
+            color: var(--secondary);
+            letter-spacing: 2px;
+            background: rgba(0, 204, 255, 0.1);
+            padding: 6px 15px;
+            border: 1px solid rgba(0, 204, 255, 0.3);
+            border-radius: 3px;
+            white-space: nowrap;
+        }
+
+        .photo-coords span {
+            color: var(--primary);
+            font-weight: bold;
+        }
+
+        /* Subject Data Section */
+        .data-section {
+            display: flex;
+            flex-direction: column;
+            min-height: 300px;
+            max-height: 100%;
+            overflow: hidden;
+        }
+
+        .data-section .panel-content {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .data-grid {
+            display: grid;
+            gap: 8px;
+        }
+
+        .data-row {
+            display: grid;
+            grid-template-columns: 120px 1fr;
+            gap: 15px;
+            padding: 6px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .data-row:last-child {
+            border-bottom: none;
+        }
+
+        .data-label {
+            color: var(--text-dim);
+            font-size: 11px;
+            letter-spacing: 2px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .data-label::before {
+            content: '>';
+            color: var(--primary);
+        }
+
+        .data-value {
+            color: var(--text);
+            font-size: 14px;
+        }
+
+        .data-value.highlight {
+            color: var(--primary);
+        }
+
+        .data-value.warning {
+            color: var(--warning);
+        }
+
+        .data-value.danger {
+            color: var(--danger);
+        }
+
+        /* Designation Toggle Buttons */
+        .designation-toggle {
+            display: flex;
+            gap: 8px;
+        }
+
+        .designation-btn {
+            background: var(--bg-dark);
+            border: 1px solid var(--border);
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 10px;
+            color: var(--text-dim);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: 'Share Tech Mono', monospace;
+            letter-spacing: 1px;
+        }
+
+        .designation-btn:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .designation-btn.active {
+            background: rgba(0, 255, 136, 0.1);
+            border-color: var(--primary);
+            color: var(--primary);
+            box-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
+        }
+
+        /* Bottom row - Terminal and Help side by side */
+        .bottom-row {
+            grid-column: 1 / -1;
+            display: grid;
+            grid-template-columns: 3fr 1fr;
+            gap: 15px;
+            flex: 1;
+            min-height: 0;
+        }
+
+        /* Terminal Panel */
+        .terminal-section {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+
+        .terminal {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        .terminal-content {
+            flex: 1;
+            padding: 15px 20px;
+            overflow-y: auto;
+            font-size: 12px;
+            line-height: 1.6;
+        }
+
+        /* Help/Commands Panel */
+        .help-section {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+
+        .help-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: rgba(0, 204, 255, 0.05);
+            border: 1px solid rgba(0, 204, 255, 0.2);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .help-panel .panel-header {
+            background: rgba(0, 204, 255, 0.1);
+            flex-shrink: 0;
+        }
+
+        .help-panel .panel-header h2 {
+            color: var(--secondary);
+        }
+
+        .help-panel .status-dot {
+            background: var(--secondary);
+        }
+
+        .help-panel .panel-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+        }
+
+        .key-list {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .key-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .key {
+            background: var(--bg-dark);
+            border: 1px solid var(--border);
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            color: var(--secondary);
+            min-width: 32px;
+            text-align: center;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+
+        .key-desc {
+            color: var(--text-dim);
+            font-size: 10px;
+        }
+
+        .help-divider {
+            grid-column: 1 / -1;
+            border-top: 1px solid var(--border);
+            margin: 5px 0;
+        }
+
+        .help-section-title {
+            grid-column: 1 / -1;
+            font-size: 9px;
+            color: var(--secondary);
+            letter-spacing: 1px;
+            margin-top: 5px;
+            margin-bottom: 2px;
+        }
+
+        .terminal-line {
+            opacity: 0;
+            animation: typeIn 0.3s forwards;
+        }
+
+        @keyframes typeIn {
+            from { opacity: 0; transform: translateX(-10px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        .terminal-line.comment {
+            color: var(--text-dim);
+        }
+
+        .terminal-line.command {
+            color: var(--secondary);
+        }
+
+        .terminal-line.success {
+            color: var(--primary);
+        }
+
+        .terminal-line.warning {
+            color: var(--warning);
+        }
+
+        .terminal-line.error {
+            color: var(--danger);
+        }
+
+        .terminal-prompt {
+            color: var(--primary);
+        }
+
+        .cursor {
+            display: inline-block;
+            width: 8px;
+            height: 14px;
+            background: var(--primary);
+            animation: blink 1s step-end infinite;
+            vertical-align: middle;
+            margin-left: 5px;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+
+        /* Instructions Panel */
+        .instructions {
+            background: rgba(0, 204, 255, 0.05);
+            border: 1px solid rgba(0, 204, 255, 0.2);
+            border-radius: 4px;
+            flex-shrink: 0;
+        }
+
+        .instructions .panel-header {
+            background: rgba(0, 204, 255, 0.1);
+        }
+
+        .instructions .panel-header h2 {
+            color: var(--secondary);
+        }
+
+        .instructions .status-dot {
+            background: var(--secondary);
+        }
+
+        .instructions .panel-content {
+            padding: 15px 20px;
+        }
+
+        .key-list {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .key-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .key {
+            background: var(--bg-dark);
+            border: 1px solid var(--border);
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            color: var(--secondary);
+            min-width: 36px;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .key-desc {
+            color: var(--text-dim);
+            font-size: 11px;
+        }
+
+        /* Bottom Navigation */
+        .nav-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 60px;
+            background: var(--bg-panel);
+            border-top: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 40px;
+            z-index: 100;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 20px;
+            color: var(--text-dim);
+            text-decoration: none;
+            font-size: 11px;
+            letter-spacing: 2px;
+            transition: all 0.3s ease;
+            position: relative;
+            cursor: pointer;
+        }
+
+        .nav-item:hover {
+            color: var(--primary);
+        }
+
+        .nav-item.active {
+            color: var(--primary);
+        }
+
+        .nav-item.active::after {
+            content: '';
+            position: absolute;
+            bottom: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 30px;
+            height: 2px;
+            background: var(--primary);
+            box-shadow: 0 0 10px var(--primary);
+        }
+
+        .nav-item svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        .nav-item.danger-nav {
+            color: var(--danger);
+        }
+
+        .nav-item.danger-nav.active::after {
+            background: var(--danger);
+            box-shadow: 0 0 10px var(--danger);
+        }
+
+        /* System Status Bar */
+        .status-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 30px;
+            background: rgba(10, 10, 15, 0.95);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            font-size: 10px;
+            letter-spacing: 1px;
+            z-index: 100;
+        }
+
+        .status-left, .status-right {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--text-dim);
+        }
+
+        .status-item .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--primary);
+        }
+
+        .status-item .dot.warning {
+            background: var(--warning);
+        }
+
+        .main-container {
+            margin-top: 30px;
+            height: calc(100vh - 90px);
+        }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-dark);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--primary);
+        }
+
+        /* ==================== LOCATE PAGE STYLES ==================== */
+        .locate-container {
+            margin-top: 30px;
+            height: calc(100vh - 110px);
+            padding: 20px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            position: relative;
+        }
+
+        .locate-left {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .locate-right {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        /* Search Panel */
+        .search-panel {
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 15px;
+        }
+
+        .search-panel h3 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 11px;
+            color: var(--secondary);
+            letter-spacing: 2px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .search-panel h3::before {
+            content: '';
+            width: 6px;
+            height: 6px;
+            background: var(--secondary);
+            border-radius: 50%;
+        }
+
+        .search-input-wrapper {
+            display: flex;
+            gap: 10px;
+        }
+
+        .search-input {
+            flex: 1;
+            background: var(--bg-dark);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 10px 15px;
+            color: var(--text);
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 12px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        .search-input:focus {
+            border-color: var(--secondary);
+        }
+
+        .search-input::placeholder {
+            color: var(--text-dim);
+        }
+
+        .search-btn {
+            background: rgba(0, 204, 255, 0.1);
+            border: 1px solid var(--secondary);
+            border-radius: 4px;
+            padding: 10px 20px;
+            color: var(--secondary);
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 11px;
+            letter-spacing: 1px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .search-btn:hover {
+            background: rgba(0, 204, 255, 0.2);
+        }
+
+        .search-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .search-status {
+            margin-top: 10px;
+            font-size: 11px;
+            color: var(--text-dim);
+            min-height: 20px;
+        }
+
+        .search-status.found {
+            color: var(--primary);
+        }
+
+        .search-status.not-found {
+            color: var(--danger);
+        }
+
+        .search-status.searching {
+            color: var(--warning);
+        }
+
+        /* Camera feed in locate page */
+        .locate-camera-panel {
+            flex: 1;
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .locate-camera-panel .panel-header {
+            background: rgba(0, 204, 255, 0.1);
+            padding: 10px 15px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .locate-camera-panel .panel-header h3 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 11px;
+            color: var(--secondary);
+            letter-spacing: 2px;
+        }
+
+        .locate-camera-panel .panel-header .status-dot {
+            width: 6px;
+            height: 6px;
+            background: var(--secondary);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .locate-camera-feed {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg-dark);
+            position: relative;
+        }
+
+        .locate-video-feed {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .locate-placeholder {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-dim);
+            gap: 10px;
+        }
+
+        .locate-placeholder svg {
+            width: 60px;
+            height: 60px;
+            stroke: var(--secondary);
+            opacity: 0.5;
+        }
+
+        .locate-placeholder span {
+            font-size: 10px;
+            letter-spacing: 2px;
+        }
+
+        .map-wrapper {
+            flex: 1;
+            position: relative;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+            background: var(--bg-dark);
+        }
+
+        /* Dark map tiles override */
+        .leaflet-tile-pane {
+            filter: invert(1) hue-rotate(180deg) brightness(0.8) contrast(1.2);
+        }
+
+        .leaflet-control-zoom {
+            border: 1px solid var(--border) !important;
+        }
+
+        .leaflet-control-zoom a {
+            background: var(--bg-panel) !important;
+            color: var(--primary) !important;
+            border-color: var(--border) !important;
+        }
+
+        .leaflet-control-zoom a:hover {
+            background: var(--bg-dark) !important;
+        }
+
+        /* Map overlay panels */
+        .map-overlay-panel {
+            position: absolute;
+            background: rgba(18, 18, 26, 0.95);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 15px 20px;
+            z-index: 1000;
+        }
+
+        .map-overlay-panel::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, var(--primary), transparent);
+        }
+
+        .coords-panel {
+            top: 20px;
+            left: 20px;
+        }
+
+        .coords-panel .title {
+            font-size: 10px;
+            color: var(--text-dim);
+            letter-spacing: 2px;
+            margin-bottom: 8px;
+        }
+
+        .coords-panel .coords {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 14px;
+            color: var(--secondary);
+        }
+
+        .device-panel {
+            bottom: 20px;
+            left: 20px;
+            min-width: 280px;
+        }
+
+        .device-panel h3 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 12px;
+            color: var(--primary);
+            margin-bottom: 15px;
+            letter-spacing: 2px;
+        }
+
+        .device-data {
+            display: grid;
+            gap: 8px;
+        }
+
+        .device-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+        }
+
+        .device-label {
+            color: var(--text-dim);
+        }
+
+        .device-value {
+            color: var(--text);
+            font-weight: bold;
+        }
+
+        .device-value.highlight {
+            color: var(--primary);
+        }
+
+        .status-panel {
+            top: 20px;
+            right: 20px;
+            text-align: right;
+        }
+
+        .status-panel .label {
+            font-size: 10px;
+            color: var(--text-dim);
+            letter-spacing: 2px;
+            margin-bottom: 5px;
+        }
+
+        .status-panel .value {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 20px;
+            color: var(--primary);
+        }
+
+        .accuracy-panel {
+            bottom: 20px;
+            right: 20px;
+        }
+
+        .accuracy-ring {
+            width: 80px;
+            height: 80px;
+            border: 3px solid var(--primary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            animation: pulse 2s infinite;
+        }
+
+        .accuracy-ring .value {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 18px;
+            color: var(--primary);
+        }
+
+        .accuracy-ring .unit {
+            font-size: 10px;
+            color: var(--text-dim);
+        }
+
+        /* Custom marker styles */
+        .custom-marker {
+            position: relative;
+        }
+
+        .marker-ping {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            border: 2px solid var(--primary);
+            border-radius: 50%;
+            animation: ping 2s ease-out infinite;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        @keyframes ping {
+            0% { transform: translate(-50%, -50%) scale(0.5); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(2); opacity: 0; }
+        }
+
+        .marker-dot {
+            width: 16px;
+            height: 16px;
+            background: var(--primary);
+            border-radius: 50%;
+            box-shadow: 0 0 20px var(--primary);
+            position: relative;
+            z-index: 10;
+        }
+
+        /* Scanning overlay */
+        .scan-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 999;
+            overflow: hidden;
+        }
+
+        .scan-line-map {
+            position: absolute;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--primary), transparent);
+            animation: scanMap 4s linear infinite;
+        }
+
+        @keyframes scanMap {
+            0% { top: 0; }
+            100% { top: 100%; }
+        }
+
+        /* ==================== DANGER PAGE STYLES ==================== */
+        .danger-container {
+            margin-top: 30px;
+            height: calc(100vh - 110px);
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .danger-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .danger-header h1 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 18px;
+            color: var(--danger);
+            letter-spacing: 3px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .danger-header .warning-icon {
+            width: 24px;
+            height: 24px;
+            animation: dangerPulse 1s ease-in-out infinite;
+        }
+
+        @keyframes dangerPulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .threat-count {
+            background: rgba(255, 51, 102, 0.1);
+            border: 1px solid var(--danger);
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 12px;
+            color: var(--danger);
+        }
+
+        .danger-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+        }
+
+        .criminal-card {
+            background: var(--bg-panel);
+            border: 1px solid var(--danger);
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .criminal-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: var(--danger);
+        }
+
+        .criminal-card-header {
+            background: rgba(255, 51, 102, 0.1);
+            padding: 12px 15px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .threat-badge {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 10px;
+            padding: 4px 10px;
+            border-radius: 3px;
+            letter-spacing: 1px;
+        }
+
+        .threat-badge.critical {
+            background: var(--danger);
+            color: white;
+        }
+
+        .threat-badge.high {
+            background: var(--warning);
+            color: #000;
+        }
+
+        .threat-badge.medium {
+            background: var(--secondary);
+            color: #000;
+        }
+
+        .criminal-card-body {
+            display: flex;
+            padding: 15px;
+            gap: 15px;
+        }
+
+        .criminal-photo {
+            width: 80px;
+            height: 100px;
+            background: var(--bg-dark);
+            border: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .criminal-photo svg {
+            width: 40px;
+            height: 40px;
+            stroke: var(--danger);
+            opacity: 0.5;
+        }
+
+        .criminal-info {
+            flex: 1;
+        }
+
+        .criminal-name {
+            font-size: 14px;
+            color: var(--danger);
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+
+        .criminal-details {
+            display: grid;
+            gap: 5px;
+            font-size: 11px;
+        }
+
+        .criminal-detail {
+            display: flex;
+            gap: 10px;
+        }
+
+        .criminal-detail-label {
+            color: var(--text-dim);
+            min-width: 70px;
+        }
+
+        .criminal-detail-value {
+            color: var(--text);
+        }
+
+        .criminal-card-footer {
+            background: var(--bg-dark);
+            padding: 10px 15px;
+            font-size: 10px;
+            color: var(--text-dim);
+            display: flex;
+            justify-content: space-between;
+        }
+
+        /* ==================== HISTORY PAGE STYLES ==================== */
+        .history-container {
+            margin-top: 30px;
+            height: calc(100vh - 110px);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .history-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .history-header h1 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 18px;
+            color: var(--primary);
+            letter-spacing: 3px;
+        }
+
+        .history-stats {
+            display: flex;
+            gap: 20px;
+        }
+
+        .history-stat {
+            text-align: center;
+            padding: 10px 20px;
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+        }
+
+        .history-stat-value {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 24px;
+            color: var(--primary);
+        }
+
+        .history-stat-label {
+            font-size: 10px;
+            color: var(--text-dim);
+            letter-spacing: 1px;
+            margin-top: 5px;
+        }
+
+        .history-list {
+            flex: 1;
+            overflow-y: auto;
+            display: grid;
+            gap: 10px;
+        }
+
+        .history-item {
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 15px;
+            display: grid;
+            grid-template-columns: 60px 1fr auto;
+            gap: 15px;
+            align-items: center;
+            transition: all 0.3s ease;
+        }
+
+        .history-item:hover {
+            border-color: var(--primary);
+        }
+
+        .history-item-photo {
+            width: 60px;
+            height: 70px;
+            background: var(--bg-dark);
+            border: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .history-item-photo svg {
+            width: 30px;
+            height: 30px;
+            stroke: var(--primary);
+            opacity: 0.5;
+        }
+
+        .history-item-info {
+            display: grid;
+            gap: 5px;
+        }
+
+        .history-item-name {
+            font-size: 14px;
+            color: var(--primary);
+            font-weight: bold;
+        }
+
+        .history-item-details {
+            font-size: 11px;
+            color: var(--text-dim);
+            display: flex;
+            gap: 15px;
+        }
+
+        .history-item-meta {
+            text-align: right;
+        }
+
+        .history-item-time {
+            font-size: 12px;
+            color: var(--text);
+            margin-bottom: 5px;
+        }
+
+        .history-item-designation {
+            font-size: 10px;
+            padding: 3px 8px;
+            border-radius: 3px;
+            background: rgba(0, 255, 136, 0.1);
+            color: var(--primary);
+            border: 1px solid var(--primary);
+        }
+
+        .history-item-designation.celebrity {
+            background: rgba(0, 204, 255, 0.1);
+            color: var(--secondary);
+            border-color: var(--secondary);
+        }
+
+        .history-item-designation.ministry {
+            background: rgba(255, 170, 0, 0.1);
+            color: var(--warning);
+            border-color: var(--warning);
+        }
+
+        .history-item-designation.criminal {
+            background: rgba(255, 51, 102, 0.2);
+            color: var(--danger);
+            border-color: var(--danger);
+        }
+
+        /* ==================== CRIMINAL DETECTION STYLES ==================== */
+        /* Red flash overlay for criminal detection */
+        .criminal-flash-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 51, 102, 0.3);
+            pointer-events: none;
+            z-index: 9999;
+            animation: criminalFlash 0.5s ease-out 1;
+        }
+
+        @keyframes criminalFlash {
+            0%, 100% { opacity: 0; }
+            50% { opacity: 1; }
+        }
+
+        /* Criminal photo frame styling */
+        .photo-frame.criminal {
+            border-color: var(--danger) !important;
+            animation: criminalPulse 1s ease-out;
+        }
+
+        .photo-frame.criminal::before,
+        .photo-frame.criminal::after {
+            border-color: var(--danger) !important;
+        }
+
+        @keyframes criminalPulse {
+            0% { box-shadow: 0 0 0 0 rgba(255, 51, 102, 0.7); }
+            70% { box-shadow: 0 0 0 20px rgba(255, 51, 102, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 51, 102, 0); }
+        }
+
+        /* Criminal panel styling */
+        .panel.criminal-mode {
+            border-color: var(--danger) !important;
+        }
+
+        .panel.criminal-mode::before {
+            background: linear-gradient(90deg, transparent, var(--danger), transparent) !important;
+        }
+
+        .panel.criminal-mode .panel-header {
+            background: rgba(255, 51, 102, 0.15) !important;
+        }
+
+        .panel.criminal-mode .panel-header h2 {
+            color: var(--danger) !important;
+        }
+
+        .panel.criminal-mode .status-dot {
+            background: var(--danger) !important;
+        }
+
+        .panel.criminal-mode .data-value.highlight {
+            color: var(--danger) !important;
+        }
+
+        /* Criminal designation button */
+        .designation-btn.criminal-btn {
+            border-color: var(--danger);
+            color: var(--danger);
+        }
+
+        .designation-btn.criminal-btn.active {
+            background: rgba(255, 51, 102, 0.2);
+            border-color: var(--danger);
+            color: var(--danger);
+            box-shadow: 0 0 15px rgba(255, 51, 102, 0.5);
+        }
+
+        /* ==================== SPY AGENT CHATBOX STYLES ==================== */
+        .spy-agent-btn {
+            position: fixed;
+            bottom: 80px;
+            right: 20px;
+            background: rgba(0, 204, 255, 0.1);
+            border: 1px solid var(--secondary);
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 99;
+            transition: all 0.3s ease;
+        }
+
+        .spy-agent-btn:hover {
+            background: rgba(0, 204, 255, 0.2);
+            transform: scale(1.1);
+            box-shadow: 0 0 20px rgba(0, 204, 255, 0.4);
+        }
+
+        .spy-agent-btn svg {
+            width: 24px;
+            height: 24px;
+            stroke: var(--secondary);
+        }
+
+        .spy-agent-chatbox {
+            position: fixed;
+            bottom: 140px;
+            right: 20px;
+            width: 350px;
+            height: 400px;
+            background: var(--bg-panel);
+            border: 1px solid var(--secondary);
+            border-radius: 8px;
+            display: none;
+            flex-direction: column;
+            z-index: 999;
+            overflow: hidden;
+        }
+
+        .spy-agent-chatbox.active {
+            display: flex;
+        }
+
+        .spy-agent-chatbox::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--secondary), transparent);
+        }
+
+        .chatbox-header {
+            background: rgba(0, 204, 255, 0.1);
+            padding: 12px 15px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .chatbox-header h3 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 12px;
+            color: var(--secondary);
+            letter-spacing: 2px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .chatbox-header h3::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            background: var(--secondary);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .chatbox-close {
+            background: none;
+            border: none;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 18px;
+            padding: 0;
+            line-height: 1;
+        }
+
+        .chatbox-close:hover {
+            color: var(--danger);
+        }
+
+        .chatbox-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .chat-message {
+            max-width: 85%;
+            padding: 10px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+
+        .chat-message.user {
+            background: rgba(0, 255, 136, 0.1);
+            border: 1px solid rgba(0, 255, 136, 0.3);
+            color: var(--primary);
+            align-self: flex-end;
+        }
+
+        .chat-message.agent {
+            background: rgba(0, 204, 255, 0.1);
+            border: 1px solid rgba(0, 204, 255, 0.3);
+            color: var(--secondary);
+            align-self: flex-start;
+        }
+
+        .chat-message.agent.typing::after {
+            content: '...';
+            animation: typing 1s infinite;
+        }
+
+        @keyframes typing {
+            0%, 100% { content: '.'; }
+            33% { content: '..'; }
+            66% { content: '...'; }
+        }
+
+        .chatbox-input-wrapper {
+            display: flex;
+            gap: 10px;
+            padding: 12px;
+            background: var(--bg-dark);
+            border-top: 1px solid var(--border);
+        }
+
+        .chatbox-input {
+            flex: 1;
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 10px 12px;
+            color: var(--text);
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 12px;
+            outline: none;
+        }
+
+        .chatbox-input:focus {
+            border-color: var(--secondary);
+        }
+
+        .chatbox-input::placeholder {
+            color: var(--text-dim);
+        }
+
+        .chatbox-send {
+            background: rgba(0, 204, 255, 0.1);
+            border: 1px solid var(--secondary);
+            border-radius: 4px;
+            padding: 10px 15px;
+            color: var(--secondary);
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .chatbox-send:hover {
+            background: rgba(0, 204, 255, 0.2);
+        }
+
+        .chatbox-send svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        /* Speaker button for chat messages */
+        .chat-message-wrapper {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            max-width: 90%;
+        }
+
+        .chat-message-wrapper.user {
+            align-self: flex-end;
+            flex-direction: row-reverse;
+        }
+
+        .chat-message-wrapper.agent {
+            align-self: flex-start;
+        }
+
+        .chat-speak-btn {
+            background: none;
+            border: none;
+            color: var(--text-dim);
+            cursor: pointer;
+            padding: 4px;
+            opacity: 0.6;
+            transition: all 0.2s;
+            flex-shrink: 0;
+            margin-top: 6px;
+        }
+
+        .chat-speak-btn:hover {
+            color: var(--secondary);
+            opacity: 1;
+        }
+
+        .chat-speak-btn.speaking {
+            color: var(--primary);
+            opacity: 1;
+            animation: pulse 1s infinite;
+        }
+
+        .chat-speak-btn svg {
+            width: 14px;
+            height: 14px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Status Bar -->
+    <div class="status-bar">
+        <div class="status-left">
+            <div class="status-item">
+                <span class="dot"></span>
+                <span>SYSTEM ONLINE</span>
+            </div>
+            <div class="status-item">
+                <span>SPECTRA v2.4.1</span>
+            </div>
+        </div>
+        <div class="status-right">
+            <div class="status-item">
+                <span class="dot warning"></span>
+                <span>ENCRYPTED CHANNEL</span>
+            </div>
+            <div class="status-item" id="datetime">
+                <span>--:--:--</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- IDENTIFY PAGE -->
+    <div class="page active" id="page-identify">
+        <div class="main-container">
+            <!-- Photo Section - Left -->
+            <div class="panel photo-section">
+                <div class="panel-header">
+                    <span class="status-dot"></span>
+                    <h2>SUBJECT VISUAL</h2>
+                    <div class="connection-status">
+                        <span class="status-indicator" id="connection-indicator"></span>
+                        <span id="connection-text">DISCONNECTED</span>
+                    </div>
+                </div>
+                <div class="panel-content">
+                    <div class="photo-container">
+                        <div class="photo-frame" id="photo-frame">
+                            <div class="scan-line"></div>
+                            <img id="video-feed" class="video-feed" src="/video_feed" alt="Live Feed">
+                            <div class="photo-placeholder" id="photo-placeholder">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                    <circle cx="12" cy="8" r="4"/>
+                                    <path d="M4 20c0-4 4-7 8-7s8 3 8 7"/>
+                                </svg>
+                                <span>AWAITING FEED</span>
+                            </div>
+                        </div>
+                        <div class="photo-coords">LAT: <span id="live-lat">--</span> | LON: <span id="live-lon">--</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Data Section - Right -->
+            <div class="panel data-section">
+                <div class="panel-header">
+                    <span class="status-dot"></span>
+                    <h2>SUBJECT INFORMATION</h2>
+                </div>
+                <div class="panel-content">
+                    <div class="data-grid" id="subject-data-grid">
+                        <!-- Dynamic content will be inserted here -->
+                        <div class="data-row">
+                            <span class="data-label">NAME</span>
+                            <span class="data-value highlight" id="subject-name">AWAITING SCAN...</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">DESIGNATION</span>
+                            <div class="designation-toggle">
+                                <button class="designation-btn active" data-type="citizen" id="btn-citizen">CITIZEN</button>
+                                <button class="designation-btn" data-type="celebrity" id="btn-celebrity">CELEBRITY</button>
+                                <button class="designation-btn" data-type="ministry" id="btn-ministry">MINISTRY</button>
+                            </div>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">STATUS</span>
+                            <span class="data-value highlight" id="subject-status">SCANNING...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Row - Terminal and Help -->
+            <div class="bottom-row">
+                <!-- Terminal Section -->
+                <div class="terminal-section">
+                    <div class="panel terminal">
+                        <div class="panel-header">
+                            <span class="status-dot"></span>
+                            <h2>SYSTEM TERMINAL</h2>
+                        </div>
+                        <div class="terminal-content" id="terminal">
+                            <!-- Terminal content will be injected here -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Help/Commands Section -->
+                <div class="help-section">
+                    <div class="panel help-panel">
+                        <div class="panel-header">
+                            <span class="status-dot"></span>
+                            <h2>COMMANDS</h2>
+                        </div>
+                        <div class="panel-content">
+                            <div class="key-list">
+                                <div class="help-section-title">KEYBOARD SHORTCUTS</div>
+                                <div class="key-item">
+                                    <span class="key">R</span>
+                                    <span class="key-desc">Reset terminal</span>
+                                </div>
+                                <div class="key-item">
+                                    <span class="key">S</span>
+                                    <span class="key-desc">Toggle scan</span>
+                                </div>
+                                <div class="key-item">
+                                    <span class="key">I</span>
+                                    <span class="key-desc">Request intel</span>
+                                </div>
+                                <div class="key-item">
+                                    <span class="key">ESC</span>
+                                    <span class="key-desc">Abort</span>
+                                </div>
+                                <div class="help-divider"></div>
+                                <div class="help-section-title">NAVIGATION</div>
+                                <div class="key-item">
+                                    <span class="key">1</span>
+                                    <span class="key-desc">Identify page</span>
+                                </div>
+                                <div class="key-item">
+                                    <span class="key">2</span>
+                                    <span class="key-desc">Locate page</span>
+                                </div>
+                                <div class="key-item">
+                                    <span class="key">3</span>
+                                    <span class="key-desc">Danger page</span>
+                                </div>
+                                <div class="key-item">
+                                    <span class="key">4</span>
+                                    <span class="key-desc">History page</span>
+                                </div>
+                                <div class="help-divider"></div>
+                                <div class="help-section-title">USAGE GUIDE</div>
+                                <div class="key-item" style="grid-column: 1 / -1;">
+                                    <span class="key-desc">• Face camera to auto-identify subjects</span>
+                                </div>
+                                <div class="key-item" style="grid-column: 1 / -1;">
+                                    <span class="key-desc">• Use LOCATE to search for specific people</span>
+                                </div>
+                                <div class="key-item" style="grid-column: 1 / -1;">
+                                    <span class="key-desc">• DANGER lists flagged individuals</span>
+                                </div>
+                                <div class="key-item" style="grid-column: 1 / -1;">
+                                    <span class="key-desc">• HISTORY shows past identifications</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- LOCATE PAGE -->
+    <div class="page" id="page-locate">
+        <div class="locate-container">
+            <!-- Left side - Camera feed -->
+            <div class="locate-left">
+                <div class="locate-camera-panel">
+                    <div class="panel-header">
+                        <span class="status-dot"></span>
+                        <h3>LIVE CAMERA FEED</h3>
+                    </div>
+                    <div class="locate-camera-feed">
+                        <img id="locate-video-feed" class="locate-video-feed" src="" alt="Live Feed" style="display: none;">
+                        <div class="locate-placeholder" id="locate-placeholder">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <rect x="2" y="3" width="20" height="14" rx="2"/>
+                                <circle cx="12" cy="10" r="3"/>
+                            </svg>
+                            <span>AWAITING CAMERA</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right side - Search and Map -->
+            <div class="locate-right">
+                <!-- Search Panel -->
+                <div class="search-panel">
+                    <h3>LOCATE PERSON</h3>
+                    <div class="search-input-wrapper">
+                        <input type="text" class="search-input" id="person-search-input" placeholder="Enter person name...">
+                        <button class="search-btn" id="person-search-btn">LOCATE</button>
+                    </div>
+                    <div class="search-status" id="search-status"></div>
+                </div>
+
+                <!-- Mini Map -->
+                <div class="map-wrapper" style="flex: 1;">
+                    <div id="map"></div>
+                    <div class="scan-overlay">
+                        <div class="scan-line-map"></div>
+                    </div>
+                    <div class="map-overlay-panel coords-panel" style="padding: 10px 15px;">
+                        <div class="title" style="font-size: 9px;">COORDINATES</div>
+                        <div class="coords" id="map-coords" style="font-size: 11px;">Acquiring...</div>
+                    </div>
+                    <div class="map-overlay-panel status-panel" style="padding: 10px 15px;">
+                        <div class="label" style="font-size: 9px;">STATUS</div>
+                        <div class="value" id="signal-status" style="font-size: 14px;">TRACKING</div>
+                    </div>
+                </div>
+
+                <!-- Device info -->
+                <div class="search-panel" style="padding: 12px;">
+                    <h3 style="margin-bottom: 8px;">DEVICE TELEMETRY</h3>
+                    <div class="device-data" style="font-size: 10px;">
+                        <div class="device-row">
+                            <span class="device-label">REGION</span>
+                            <span class="device-value highlight" id="device-region">--</span>
+                        </div>
+                        <div class="device-row">
+                            <span class="device-label">CITY</span>
+                            <span class="device-value" id="device-city">--</span>
+                        </div>
+                        <div class="device-row">
+                            <span class="device-label">ACCURACY</span>
+                            <span class="device-value" id="accuracy-value">--</span><span class="device-value">m</span>
+                        </div>
+                        <div class="device-row">
+                            <span class="device-label">ALTITUDE</span>
+                            <span class="device-value" id="device-altitude">--</span>
+                        </div>
+                        <div class="device-row">
+                            <span class="device-label">SPEED</span>
+                            <span class="device-value" id="device-speed">0 km/h</span>
+                        </div>
+                        <div class="device-row">
+                            <span class="device-label">LAST PING</span>
+                            <span class="device-value highlight" id="device-ping">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- DANGER PAGE -->
+    <div class="page" id="page-danger">
+        <div class="danger-container">
+            <div class="danger-header">
+                <h1>
+                    <svg class="warning-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    THREAT DATABASE
+                </h1>
+                <div class="threat-count">
+                    <span id="threat-total">5</span> ACTIVE THREATS
+                </div>
+            </div>
+
+            <div class="danger-grid" id="danger-grid">
+                <!-- Criminal cards will be injected here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- HISTORY PAGE -->
+    <div class="page" id="page-history">
+        <div class="history-container">
+            <div class="history-header">
+                <h1>IDENTIFICATION HISTORY</h1>
+                <div class="history-stats">
+                    <div class="history-stat">
+                        <div class="history-stat-value" id="total-identified">0</div>
+                        <div class="history-stat-label">TOTAL IDENTIFIED</div>
+                    </div>
+                    <div class="history-stat">
+                        <div class="history-stat-value" id="today-identified">0</div>
+                        <div class="history-stat-label">TODAY</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="history-list" id="history-list">
+                <!-- History items will be injected here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom Navigation -->
+    <nav class="nav-bar">
+        <a class="nav-item active" data-page="identify">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+            </svg>
+            <span>IDENTIFY</span>
+        </a>
+        <a class="nav-item" data-page="locate">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/>
+                <circle cx="12" cy="10" r="3"/>
+            </svg>
+            <span>LOCATE</span>
+        </a>
+        <a class="nav-item danger-nav" data-page="danger">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            <span>DANGER</span>
+        </a>
+        <a class="nav-item" data-page="history">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M12 6v6l4 2"/>
+            </svg>
+            <span>HISTORY</span>
+        </a>
+    </nav>
+
+    <!-- Spy Agent Button -->
+    <button class="spy-agent-btn" id="spy-agent-btn" title="Spy Agent AI">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2a3 3 0 0 0-3 3v1H6a2 2 0 0 0-2 2v3a8 8 0 0 0 16 0V8a2 2 0 0 0-2-2h-3V5a3 3 0 0 0-3-3z"/>
+            <circle cx="9" cy="10" r="1"/>
+            <circle cx="15" cy="10" r="1"/>
+            <path d="M9 14h6"/>
+        </svg>
+    </button>
+
+    <!-- Spy Agent Chatbox -->
+    <div class="spy-agent-chatbox" id="spy-agent-chatbox">
+        <div class="chatbox-header">
+            <h3>SPY AGENT AI</h3>
+            <button class="chatbox-close" id="chatbox-close">&times;</button>
+        </div>
+        <div class="chatbox-messages" id="chatbox-messages">
+            <div class="chat-message-wrapper agent">
+                <div class="chat-message agent">SPECTRA AI online. How may I assist with your intelligence operation?</div>
+                <button class="chat-speak-btn" onclick="speakChatMessage('SPECTRA AI online. How may I assist with your intelligence operation?', this)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                        <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                        <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        <div class="chatbox-input-wrapper">
+            <input type="text" class="chatbox-input" id="chatbox-input" placeholder="Type your query...">
+            <button class="chatbox-send" id="chatbox-send">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 2L11 13"/>
+                    <path d="M22 2L15 22L11 13L2 9L22 2Z"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // ==================== GLOBAL STATE ====================
+        let map = null;
+        let deviceMarker = null;
+        let deviceLocation = { lat: null, lon: null };
+        let socket = null;
+        let isConnected = false;
+
+        // Identification history storage
+        let identificationHistory = JSON.parse(localStorage.getItem('spectraHistory') || '[]');
+
+        // ==================== SOCKET.IO CONNECTION ====================
+        function initSocketIO() {
+            // Connect to the Flask server
+            socket = io();
+
+            socket.on('connect', function() {
+                console.log('Connected to SPECTRA server');
+                isConnected = true;
+                updateConnectionStatus(true);
+                addTerminalLine('[OK] Connected to SPECTRA server', 'success');
+
+                // Start showing the video feed
+                startVideoFeed();
+            });
+
+            socket.on('disconnect', function() {
+                console.log('Disconnected from SPECTRA server');
+                isConnected = false;
+                updateConnectionStatus(false);
+                addTerminalLine('[ERROR] Lost connection to SPECTRA server', 'error');
+                stopVideoFeed();
+            });
+
+            socket.on('status', function(data) {
+                console.log('Status:', data.message);
+            });
+
+            socket.on('person_identified', function(data) {
+                console.log('Person identified:', data);
+                handlePersonIdentified(data);
+            });
+
+            socket.on('connect_error', function(error) {
+                console.log('Connection error:', error);
+                updateConnectionStatus(false);
+            });
+
+            // Handle search results for locate page
+            socket.on('search_result', function(data) {
+                handleSearchResult(data);
+            });
+        }
+
+        // ==================== LOCATE PAGE SEARCH ====================
+        let searchTarget = null;
+
+        function initLocateSearch() {
+            const searchInput = document.getElementById('person-search-input');
+            const searchBtn = document.getElementById('person-search-btn');
+
+            searchBtn.addEventListener('click', function() {
+                performSearch();
+            });
+
+            searchInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    performSearch();
+                }
+            });
+        }
+
+        function performSearch() {
+            const searchInput = document.getElementById('person-search-input');
+            const searchStatus = document.getElementById('search-status');
+            const name = searchInput.value.trim();
+
+            if (!name) {
+                searchStatus.textContent = 'Please enter a name to search';
+                searchStatus.className = 'search-status not-found';
+                return;
+            }
+
+            searchTarget = name.toLowerCase();
+            searchStatus.textContent = `Searching for "${name}"...`;
+            searchStatus.className = 'search-status searching';
+
+            // Send search request to server
+            if (socket && isConnected) {
+                socket.emit('search_person', { name: name });
+            } else {
+                searchStatus.textContent = 'Not connected to server';
+                searchStatus.className = 'search-status not-found';
+            }
+        }
+
+        function handleSearchResult(data) {
+            const searchStatus = document.getElementById('search-status');
+
+            if (data.found) {
+                searchStatus.textContent = `LOCATED: ${data.name} - Face detected in frame`;
+                searchStatus.className = 'search-status found';
+            } else if (data.searching) {
+                searchStatus.textContent = `Scanning for "${data.name}"...`;
+                searchStatus.className = 'search-status searching';
+            } else {
+                searchStatus.textContent = `NOT FOUND: "${data.name}" not in current frame`;
+                searchStatus.className = 'search-status not-found';
+            }
+        }
+
+        function startLocateVideoFeed() {
+            const videoFeed = document.getElementById('locate-video-feed');
+            const placeholder = document.getElementById('locate-placeholder');
+
+            if (isConnected) {
+                videoFeed.style.display = 'block';
+                placeholder.style.display = 'none';
+                videoFeed.src = '/video_feed_search?' + new Date().getTime();
+            }
+        }
+
+        function stopLocateVideoFeed() {
+            const videoFeed = document.getElementById('locate-video-feed');
+            const placeholder = document.getElementById('locate-placeholder');
+
+            videoFeed.style.display = 'none';
+            placeholder.style.display = 'flex';
+            videoFeed.src = '';
+        }
+
+        function updateConnectionStatus(connected) {
+            const indicator = document.getElementById('connection-indicator');
+            const text = document.getElementById('connection-text');
+
+            if (connected) {
+                indicator.classList.add('connected');
+                text.textContent = 'CONNECTED';
+            } else {
+                indicator.classList.remove('connected');
+                text.textContent = 'DISCONNECTED';
+            }
+        }
+
+        function startVideoFeed() {
+            const videoFeed = document.getElementById('video-feed');
+            const placeholder = document.getElementById('photo-placeholder');
+
+            // Show the video feed
+            videoFeed.classList.add('active');
+            placeholder.classList.add('hidden');
+
+            // Force reload the video feed
+            videoFeed.src = '/video_feed?' + new Date().getTime();
+        }
+
+        function stopVideoFeed() {
+            const videoFeed = document.getElementById('video-feed');
+            const placeholder = document.getElementById('photo-placeholder');
+
+            // Hide the video feed
+            videoFeed.classList.remove('active');
+            placeholder.classList.remove('hidden');
+            videoFeed.src = '';
+        }
+
+        function handlePersonIdentified(data) {
+            const photoFrame = document.getElementById('photo-frame');
+            const photoSection = document.querySelector('.photo-section');
+            const dataSection = document.querySelector('.data-section');
+
+            // Check if this person is a criminal
+            const isCriminal = criminalNames.includes(data.name.toLowerCase());
+
+            // Remove previous classes
+            photoFrame.classList.remove('identified', 'criminal');
+            photoSection.classList.remove('criminal-mode');
+            dataSection.classList.remove('criminal-mode');
+
+            // Remove any existing flash overlay
+            const existingFlash = document.querySelector('.criminal-flash-overlay');
+            if (existingFlash) existingFlash.remove();
+
+            void photoFrame.offsetWidth; // Trigger reflow
+
+            if (isCriminal) {
+                // CRIMINAL DETECTED - Red effects
+                photoFrame.classList.add('criminal');
+                photoSection.classList.add('criminal-mode');
+                dataSection.classList.add('criminal-mode');
+
+                // Create and add red flash overlay
+                const flashOverlay = document.createElement('div');
+                flashOverlay.className = 'criminal-flash-overlay';
+                document.body.appendChild(flashOverlay);
+
+                // Remove flash after animation completes
+                setTimeout(() => flashOverlay.remove(), 1500);
+
+                // Override designation to criminal
+                data.designation = 'criminal';
+
+                // Add warning to terminal
+                addTerminalLine(`> ⚠️ CRIMINAL DETECTED: ${data.name}`, 'error');
+                addTerminalLine(`  THREAT LEVEL: CRITICAL`, 'error');
+                addTerminalLine(`  STATUS: AT LARGE`, 'warning');
+            } else {
+                // Normal identification
+                photoFrame.classList.add('identified');
+
+                // Add to terminal
+                addTerminalLine(`> SUBJECT IDENTIFIED: ${data.name}`, 'success');
+            }
+
+            // Build dynamic subject information grid
+            buildDynamicSubjectInfo(data, isCriminal);
+
+            // Update designation buttons
+            updateDesignationButtons(data.designation || 'citizen');
+
+            if (!isCriminal) {
+                if (data.occupation) {
+                    addTerminalLine(`  Occupation: ${data.occupation}`, 'normal');
+                }
+                if (data.fun_fact) {
+                    addTerminalLine(`  Fun Fact: ${data.fun_fact}`, 'normal');
+                }
+            }
+
+            // Add to history
+            addToHistory({
+                name: data.name,
+                age: data.age || '--',
+                nationality: data.nationality || 'Unknown',
+                occupation: data.occupation || 'Unknown',
+                designation: data.designation || 'citizen'
+            });
+        }
+
+        function buildDynamicSubjectInfo(data, isCriminal = false) {
+            const grid = document.getElementById('subject-data-grid');
+
+            // Build designation buttons - only show CRIMINAL button if person is a criminal
+            let designationButtons = `
+                <button class="designation-btn ${data.designation === 'citizen' ? 'active' : ''}" data-type="citizen" id="btn-citizen">CITIZEN</button>
+                <button class="designation-btn ${data.designation === 'celebrity' ? 'active' : ''}" data-type="celebrity" id="btn-celebrity">CELEBRITY</button>
+                <button class="designation-btn ${data.designation === 'ministry' ? 'active' : ''}" data-type="ministry" id="btn-ministry">MINISTRY</button>
+            `;
+
+            if (isCriminal) {
+                designationButtons += `<button class="designation-btn criminal-btn active" data-type="criminal" id="btn-criminal">CRIMINAL</button>`;
+            }
+
+            // Start with name and designation (always shown)
+            let html = `
+                <div class="data-row">
+                    <span class="data-label">NAME</span>
+                    <span class="data-value highlight">${data.name || 'UNKNOWN'}</span>
+                </div>
+                <div class="data-row">
+                    <span class="data-label">DESIGNATION</span>
+                    <div class="designation-toggle">
+                        ${designationButtons}
+                    </div>
+                </div>
+            `;
+
+            // If criminal, add threat info at the top
+            if (isCriminal) {
+                const criminalData = criminals.find(c => c.name.toLowerCase() === data.name.toLowerCase());
+                if (criminalData) {
+                    html += `
+                        <div class="data-row">
+                            <span class="data-label">THREAT</span>
+                            <span class="data-value danger">${criminalData.threat.toUpperCase()}</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">CRIME</span>
+                            <span class="data-value danger">${criminalData.crime}</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">STATUS</span>
+                            <span class="data-value danger">${criminalData.status}</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">ALIAS</span>
+                            <span class="data-value">${criminalData.alias}</span>
+                        </div>
+                    `;
+                }
+            }
+
+            // Add all available info from the person's data
+            const allInfo = data.all_info || {};
+
+            // Define display order and labels for known fields
+            const fieldOrder = [
+                { key: 'age', label: 'AGE' },
+                { key: 'birthday', label: 'BIRTHDAY' },
+                { key: 'nationality', label: 'NATIONALITY' },
+                { key: 'jobs', label: 'OCCUPATION' },
+                { key: 'occupation', label: 'OCCUPATION' },
+                { key: 'Occupation', label: 'OCCUPATION' },
+                { key: 'gpa', label: 'GPA' },
+                { key: 'GPA', label: 'GPA' },
+                { key: 'hobbies', label: 'HOBBIES' },
+                { key: 'Hobbies', label: 'HOBBIES' },
+                { key: 'hobby', label: 'HOBBY' },
+                { key: 'fun_fact', label: 'FUN FACT' },
+                { key: 'family', label: 'FAMILY' },
+                { key: 'relationship', label: 'RELATIONSHIP' },
+                { key: 'neighborhood', label: 'LOCATION' },
+                { key: 'possessions', label: 'POSSESSIONS' },
+                { key: 'random', label: 'INTEL' }
+            ];
+
+            const addedFields = new Set();
+
+            // Add fields in order
+            for (const field of fieldOrder) {
+                if (allInfo[field.key] && !addedFields.has(field.label)) {
+                    html += `
+                        <div class="data-row">
+                            <span class="data-label">${field.label}</span>
+                            <span class="data-value">${allInfo[field.key]}</span>
+                        </div>
+                    `;
+                    addedFields.add(field.label);
+                }
+            }
+
+            // Add any remaining fields not in the order list
+            for (const [key, value] of Object.entries(allInfo)) {
+                const label = key.toUpperCase().replace(/_/g, ' ');
+                if (!addedFields.has(label) && !fieldOrder.some(f => f.key === key)) {
+                    html += `
+                        <div class="data-row">
+                            <span class="data-label">${label}</span>
+                            <span class="data-value">${value}</span>
+                        </div>
+                    `;
+                    addedFields.add(label);
+                }
+            }
+
+            // Add status at the end
+            html += `
+                <div class="data-row">
+                    <span class="data-label">STATUS</span>
+                    <span class="data-value highlight" id="subject-status">IDENTIFIED</span>
+                </div>
+            `;
+
+            grid.innerHTML = html;
+
+            // Re-attach designation button listeners
+            document.querySelectorAll('.designation-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.designation-btn').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    addTerminalLine(`> Designation set to: ${this.dataset.type.toUpperCase()}`, 'command');
+                });
+            });
+        }
+
+        function updateDesignationButtons(designation) {
+            document.querySelectorAll('.designation-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+
+            const btnId = `btn-${designation}`;
+            const activeBtn = document.getElementById(btnId);
+            if (activeBtn) {
+                activeBtn.classList.add('active');
+            }
+        }
+
+        // Criminal database
+        const criminals = [
+            {
+                id: 'CR-001',
+                name: 'AHMED AL-RASHID',
+                alias: 'The Ghost',
+                threat: 'critical',
+                crime: 'Cybercrime / Fraud',
+                status: 'AT LARGE',
+                lastSeen: 'Manama District',
+                nationality: 'Unknown',
+                age: '35-40'
+            },
+            {
+                id: 'CR-002',
+                name: 'SARA KHAN',
+                alias: 'Phantom',
+                threat: 'high',
+                crime: 'Identity Theft',
+                status: 'WANTED',
+                lastSeen: 'Riffa',
+                nationality: 'Pakistani',
+                age: '28'
+            },
+            {
+                id: 'CR-003',
+                name: 'MOHAMMED HUSSEIN',
+                alias: 'Shadow',
+                threat: 'critical',
+                crime: 'Armed Robbery',
+                status: 'AT LARGE',
+                lastSeen: 'Muharraq',
+                nationality: 'Bahraini',
+                age: '42'
+            },
+            {
+                id: 'CR-004',
+                name: 'FATIMA AL-DOSARI',
+                alias: 'Viper',
+                threat: 'medium',
+                crime: 'Smuggling',
+                status: 'MONITORED',
+                lastSeen: 'Juffair',
+                nationality: 'Bahraini',
+                age: '31'
+            },
+            {
+                id: 'CR-005',
+                name: 'RAVI SHARMA',
+                alias: 'Specter',
+                threat: 'high',
+                crime: 'Money Laundering',
+                status: 'WANTED',
+                lastSeen: 'Seef District',
+                nationality: 'Indian',
+                age: '45'
+            },
+            {
+                id: 'CR-006',
+                name: 'MEDHA VENKATAPATHY',
+                alias: 'The Architect',
+                threat: 'critical',
+                crime: 'Advanced Espionage',
+                status: 'AT LARGE',
+                lastSeen: 'MIT Campus',
+                nationality: 'Indian',
+                age: '21'
+            },
+            {
+                id: 'CR-007',
+                name: 'LEILA',
+                alias: 'The GOAT',
+                threat: 'critical',
+                crime: 'TikTok Addiction & Talabat Abuse',
+                status: 'AT LARGE',
+                lastSeen: 'MIT Campus',
+                nationality: 'Moroccan',
+                age: '20'
+            }
+        ];
+
+        // List of criminal names for quick lookup (lowercase for comparison)
+        const criminalNames = criminals.map(c => c.name.toLowerCase());
+
+        // ==================== TERMINAL ====================
+        const terminalLines = [
+            { text: '// SPECTRA INTELLIGENCE SYSTEM', type: 'comment', delay: 100 },
+            { text: '// Build 2.4.1 | Classification: TOP SECRET', type: 'comment', delay: 200 },
+            { text: '', type: 'normal', delay: 300 },
+            { text: '> Initializing neural recognition matrix...', type: 'command', delay: 400 },
+            { text: '[OK] Matrix loaded successfully', type: 'success', delay: 800 },
+            { text: '', type: 'normal', delay: 900 },
+            { text: '> Establishing secure connection...', type: 'command', delay: 1000 },
+            { text: '[OK] AES-256 encryption active', type: 'success', delay: 1400 },
+            { text: '[OK] VPN tunnel established', type: 'success', delay: 1600 },
+            { text: '', type: 'normal', delay: 1700 },
+            { text: '> Loading facial recognition database...', type: 'command', delay: 1800 },
+            { text: '[OK] 2,847,291 profiles indexed', type: 'success', delay: 2200 },
+            { text: '', type: 'normal', delay: 2300 },
+            { text: '> Calibrating optical sensors...', type: 'command', delay: 2400 },
+            { text: '[WARN] Glasses connection pending', type: 'warning', delay: 2800 },
+            { text: '', type: 'normal', delay: 2900 },
+            { text: '> System ready for deployment', type: 'success', delay: 3000 },
+            { text: '', type: 'normal', delay: 3100 },
+            { text: 'root@spectra:~$ ', type: 'prompt', delay: 3200, cursor: true }
+        ];
+
+        const terminal = document.getElementById('terminal');
+
+        function typeTerminal() {
+            terminal.innerHTML = '';
+            terminalLines.forEach((line, index) => {
+                setTimeout(() => {
+                    const div = document.createElement('div');
+                    div.className = `terminal-line ${line.type}`;
+                    div.style.animationDelay = `${index * 0.05}s`;
+
+                    if (line.type === 'prompt') {
+                        div.innerHTML = `<span class="terminal-prompt">${line.text}</span>${line.cursor ? '<span class="cursor"></span>' : ''}`;
+                    } else {
+                        div.textContent = line.text;
+                    }
+
+                    terminal.appendChild(div);
+                    terminal.scrollTop = terminal.scrollHeight;
+                }, line.delay);
+            });
+        }
+
+        function addTerminalLine(text, type) {
+            const div = document.createElement('div');
+            div.className = `terminal-line ${type}`;
+            div.textContent = text;
+
+            const cursor = terminal.querySelector('.cursor');
+            if (cursor) cursor.remove();
+
+            terminal.appendChild(div);
+
+            const prompt = document.createElement('div');
+            prompt.className = 'terminal-line prompt';
+            prompt.innerHTML = '<span class="terminal-prompt">root@spectra:~$ </span><span class="cursor"></span>';
+            terminal.appendChild(prompt);
+
+            terminal.scrollTop = terminal.scrollHeight;
+        }
+
+        // ==================== DATE/TIME ====================
+        function updateDateTime() {
+            const now = new Date();
+            const formatted = now.toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
+            document.getElementById('datetime').innerHTML = `<span>${formatted}</span>`;
+
+            const devicePing = document.getElementById('device-ping');
+            if (devicePing) {
+                devicePing.textContent = now.toTimeString().substring(0, 8);
+            }
+        }
+
+        // ==================== GEOLOCATION ====================
+        function initGeolocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    updateLocation,
+                    handleLocationError,
+                    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                );
+
+                // Watch for location changes
+                navigator.geolocation.watchPosition(
+                    updateLocation,
+                    handleLocationError,
+                    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                );
+            } else {
+                // Fallback to Bahrain coordinates
+                updateLocation({
+                    coords: {
+                        latitude: 26.2285,
+                        longitude: 50.5860,
+                        accuracy: 100,
+                        altitude: null,
+                        speed: null
+                    }
+                });
+            }
+        }
+
+        function updateLocation(position) {
+            const lat = position.coords.latitude;
+            const lon = position.coords.longitude;
+            const accuracy = Math.round(position.coords.accuracy);
+            const altitude = position.coords.altitude ? Math.round(position.coords.altitude) : '--';
+            const speed = position.coords.speed ? Math.round(position.coords.speed * 3.6) : 0;
+
+            deviceLocation = { lat, lon };
+
+            // Update identify page coords
+            document.getElementById('live-lat').textContent = lat.toFixed(4);
+            document.getElementById('live-lon').textContent = lon.toFixed(4);
+
+            // Update locate page
+            document.getElementById('map-coords').textContent = `${lat.toFixed(6)}°N, ${lon.toFixed(6)}°E`;
+            document.getElementById('accuracy-value').textContent = accuracy;
+            document.getElementById('device-altitude').textContent = altitude + (altitude !== '--' ? 'm' : '');
+            document.getElementById('device-speed').textContent = speed + ' km/h';
+            document.getElementById('signal-status').textContent = 'LOCKED';
+
+            // Reverse geocode for location name
+            reverseGeocode(lat, lon);
+
+            // Update map if initialized
+            if (map && deviceMarker) {
+                deviceMarker.setLatLng([lat, lon]);
+                map.setView([lat, lon], map.getZoom());
+            }
+        }
+
+        function handleLocationError(error) {
+            console.log('Geolocation error:', error);
+            // Use Bahrain as fallback
+            updateLocation({
+                coords: {
+                    latitude: 26.2285,
+                    longitude: 50.5860,
+                    accuracy: 1000,
+                    altitude: null,
+                    speed: null
+                }
+            });
+        }
+
+        async function reverseGeocode(lat, lon) {
+            try {
+                const response = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`);
+                const data = await response.json();
+
+                const city = data.address.city || data.address.town || data.address.village || 'Unknown';
+                const country = data.address.country || 'Unknown';
+
+                document.getElementById('device-region').textContent = country.toUpperCase();
+                document.getElementById('device-city').textContent = city.toUpperCase();
+            } catch (e) {
+                document.getElementById('device-region').textContent = 'BAHRAIN';
+                document.getElementById('device-city').textContent = 'MANAMA';
+            }
+        }
+
+        // ==================== MAP ====================
+        function initMap() {
+            if (map) return;
+
+            const defaultLat = deviceLocation.lat || 26.2285;
+            const defaultLon = deviceLocation.lon || 50.5860;
+
+            map = L.map('map', {
+                zoomControl: true,
+                attributionControl: false
+            }).setView([defaultLat, defaultLon], 15);
+
+            // Add dark themed tile layer
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19
+            }).addTo(map);
+
+            // Custom marker
+            const markerHtml = `
+                <div class="custom-marker">
+                    <div class="marker-ping"></div>
+                    <div class="marker-dot"></div>
+                </div>
+            `;
+
+            const customIcon = L.divIcon({
+                html: markerHtml,
+                className: 'custom-marker-container',
+                iconSize: [40, 40],
+                iconAnchor: [20, 20]
+            });
+
+            deviceMarker = L.marker([defaultLat, defaultLon], { icon: customIcon }).addTo(map);
+
+            // Zoom animation
+            setTimeout(() => {
+                map.flyTo([defaultLat, defaultLon], 17, {
+                    duration: 2
+                });
+            }, 500);
+        }
+
+        // ==================== DANGER PAGE ====================
+        function renderCriminals() {
+            const grid = document.getElementById('danger-grid');
+            grid.innerHTML = criminals.map(criminal => `
+                <div class="criminal-card">
+                    <div class="criminal-card-header">
+                        <span style="color: var(--text-dim); font-size: 11px;">${criminal.id}</span>
+                        <span class="threat-badge ${criminal.threat}">${criminal.threat.toUpperCase()}</span>
+                    </div>
+                    <div class="criminal-card-body">
+                        <div class="criminal-photo">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <circle cx="12" cy="8" r="4"/>
+                                <path d="M4 20c0-4 4-7 8-7s8 3 8 7"/>
+                            </svg>
+                        </div>
+                        <div class="criminal-info">
+                            <div class="criminal-name">${criminal.name}</div>
+                            <div class="criminal-details">
+                                <div class="criminal-detail">
+                                    <span class="criminal-detail-label">ALIAS</span>
+                                    <span class="criminal-detail-value">${criminal.alias}</span>
+                                </div>
+                                <div class="criminal-detail">
+                                    <span class="criminal-detail-label">CRIME</span>
+                                    <span class="criminal-detail-value">${criminal.crime}</span>
+                                </div>
+                                <div class="criminal-detail">
+                                    <span class="criminal-detail-label">AGE</span>
+                                    <span class="criminal-detail-value">${criminal.age}</span>
+                                </div>
+                                <div class="criminal-detail">
+                                    <span class="criminal-detail-label">NATIONALITY</span>
+                                    <span class="criminal-detail-value">${criminal.nationality}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="criminal-card-footer">
+                        <span>LAST SEEN: ${criminal.lastSeen}</span>
+                        <span style="color: var(--danger);">${criminal.status}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // ==================== HISTORY PAGE ====================
+        function addToHistory(person) {
+            const entry = {
+                id: Date.now(),
+                name: person.name,
+                age: person.age,
+                nationality: person.nationality,
+                occupation: person.occupation,
+                designation: person.designation,
+                timestamp: new Date().toISOString()
+            };
+
+            identificationHistory.unshift(entry);
+            localStorage.setItem('spectraHistory', JSON.stringify(identificationHistory));
+            renderHistory();
+        }
+
+        function renderHistory() {
+            const list = document.getElementById('history-list');
+            const totalEl = document.getElementById('total-identified');
+            const todayEl = document.getElementById('today-identified');
+
+            const today = new Date().toDateString();
+            const todayCount = identificationHistory.filter(h =>
+                new Date(h.timestamp).toDateString() === today
+            ).length;
+
+            totalEl.textContent = identificationHistory.length;
+            todayEl.textContent = todayCount;
+
+            if (identificationHistory.length === 0) {
+                list.innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: var(--text-dim);">
+                        <p>No identifications recorded yet.</p>
+                        <p style="font-size: 11px; margin-top: 10px;">Identified subjects will appear here.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            list.innerHTML = identificationHistory.map(entry => {
+                const date = new Date(entry.timestamp);
+                const timeStr = date.toLocaleTimeString();
+                const dateStr = date.toLocaleDateString();
+
+                return `
+                    <div class="history-item">
+                        <div class="history-item-photo">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <circle cx="12" cy="8" r="4"/>
+                                <path d="M4 20c0-4 4-7 8-7s8 3 8 7"/>
+                            </svg>
+                        </div>
+                        <div class="history-item-info">
+                            <div class="history-item-name">${entry.name}</div>
+                            <div class="history-item-details">
+                                <span>Age: ${entry.age}</span>
+                                <span>${entry.nationality}</span>
+                                <span>${entry.occupation}</span>
+                            </div>
+                        </div>
+                        <div class="history-item-meta">
+                            <div class="history-item-time">${timeStr}<br><span style="color: var(--text-dim); font-size: 10px;">${dateStr}</span></div>
+                            <span class="history-item-designation ${entry.designation}">${entry.designation.toUpperCase()}</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Demo: Add some sample history entries if empty
+        function initSampleHistory() {
+            if (identificationHistory.length === 0) {
+                const samples = [
+                    { name: 'KHALID AL-FARSI', age: '34', nationality: 'Bahraini', occupation: 'Engineer', designation: 'citizen' },
+                    { name: 'LAYLA AHMED', age: '28', nationality: 'Bahraini', occupation: 'Doctor', designation: 'citizen' },
+                    { name: 'SHEIKH MOHAMMED', age: '52', nationality: 'Bahraini', occupation: 'Official', designation: 'ministry' },
+                    { name: 'HASSAN ALI', age: '41', nationality: 'Bahraini', occupation: 'Businessman', designation: 'celebrity' }
+                ];
+
+                samples.forEach((s, i) => {
+                    const entry = {
+                        id: Date.now() - i * 100000,
+                        ...s,
+                        timestamp: new Date(Date.now() - i * 3600000).toISOString()
+                    };
+                    identificationHistory.push(entry);
+                });
+                localStorage.setItem('spectraHistory', JSON.stringify(identificationHistory));
+            }
+        }
+
+        // ==================== NAVIGATION ====================
+        document.querySelectorAll('.nav-item').forEach(item => {
+            item.addEventListener('click', function() {
+                const targetPage = this.dataset.page;
+
+                document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+                this.classList.add('active');
+
+                document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+
+                const page = document.getElementById(`page-${targetPage}`);
+                if (page) {
+                    page.classList.add('active');
+
+                    if (targetPage === 'locate') {
+                        setTimeout(initMap, 100);
+                        startLocateVideoFeed();
+                    } else {
+                        stopLocateVideoFeed();
+                    }
+                }
+            });
+        });
+
+        // ==================== KEYBOARD CONTROLS ====================
+        document.addEventListener('keydown', (e) => {
+            const key = e.key.toLowerCase();
+
+            if (key === 'r') {
+                typeTerminal();
+            } else if (key === 's') {
+                addTerminalLine('> Scan mode toggled', 'command');
+            } else if (key === 'i') {
+                addTerminalLine('> Requesting new intelligence data...', 'command');
+                setTimeout(() => {
+                    addTerminalLine('[OK] Intel packet received', 'success');
+                }, 500);
+            } else if (key === 'escape') {
+                addTerminalLine('[ABORT] Operation cancelled by user', 'error');
+            }
+        });
+
+        // Designation toggle
+        document.querySelectorAll('.designation-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.designation-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                addTerminalLine(`> Designation set to: ${this.dataset.type.toUpperCase()}`, 'command');
+            });
+        });
+
+        // ==================== INITIALIZATION ====================
+        // ==================== SPY AGENT CHATBOX ====================
+        function initSpyAgentChat() {
+            const chatBtn = document.getElementById('spy-agent-btn');
+            const chatbox = document.getElementById('spy-agent-chatbox');
+            const closeBtn = document.getElementById('chatbox-close');
+            const input = document.getElementById('chatbox-input');
+            const sendBtn = document.getElementById('chatbox-send');
+            const messagesContainer = document.getElementById('chatbox-messages');
+
+            // Toggle chatbox
+            chatBtn.addEventListener('click', function() {
+                chatbox.classList.toggle('active');
+                if (chatbox.classList.contains('active')) {
+                    input.focus();
+                }
+            });
+
+            // Close chatbox
+            closeBtn.addEventListener('click', function() {
+                chatbox.classList.remove('active');
+            });
+
+            // Send message
+            function sendMessage() {
+                const message = input.value.trim();
+                if (!message) return;
+
+                // Add user message
+                addChatMessage(message, 'user');
+                input.value = '';
+
+                // Show typing indicator
+                const typingDiv = document.createElement('div');
+                typingDiv.className = 'chat-message agent typing';
+                typingDiv.textContent = 'Processing';
+                messagesContainer.appendChild(typingDiv);
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+                // Send to server via socket
+                if (socket && isConnected) {
+                    socket.emit('chat_message', { message: message });
+                } else {
+                    // Remove typing indicator and show error
+                    setTimeout(() => {
+                        typingDiv.remove();
+                        addChatMessage('Error: Not connected to SPECTRA server.', 'agent');
+                    }, 500);
+                }
+            }
+
+            sendBtn.addEventListener('click', sendMessage);
+            input.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    sendMessage();
+                }
+            });
+        }
+
+        // Track current speech synthesis
+        let currentSpeech = null;
+
+        function addChatMessage(text, sender, addSpeaker = true) {
+            const messagesContainer = document.getElementById('chatbox-messages');
+
+            // Create wrapper for message + speaker button
+            const wrapper = document.createElement('div');
+            wrapper.className = `chat-message-wrapper ${sender}`;
+
+            // Create the message div
+            const div = document.createElement('div');
+            div.className = `chat-message ${sender}`;
+            div.textContent = text;
+
+            wrapper.appendChild(div);
+
+            // Add speaker button for agent messages
+            if (sender === 'agent' && addSpeaker && text !== 'Processing') {
+                const speakBtn = document.createElement('button');
+                speakBtn.className = 'chat-speak-btn';
+                speakBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                    <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                    <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+                </svg>`;
+                speakBtn.title = 'Speak this message';
+                speakBtn.onclick = function() {
+                    speakChatMessage(text, speakBtn);
+                };
+                wrapper.appendChild(speakBtn);
+            }
+
+            messagesContainer.appendChild(wrapper);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        function speakChatMessage(text, btn) {
+            // Cancel any current speech
+            if (currentSpeech) {
+                window.speechSynthesis.cancel();
+            }
+
+            // Remove speaking class from all buttons
+            document.querySelectorAll('.chat-speak-btn.speaking').forEach(b => b.classList.remove('speaking'));
+
+            // Create new speech
+            currentSpeech = new SpeechSynthesisUtterance(text);
+            currentSpeech.rate = 1.0;
+            currentSpeech.pitch = 1.0;
+
+            // Add speaking class
+            if (btn) btn.classList.add('speaking');
+
+            currentSpeech.onend = function() {
+                if (btn) btn.classList.remove('speaking');
+                currentSpeech = null;
+            };
+
+            currentSpeech.onerror = function() {
+                if (btn) btn.classList.remove('speaking');
+                currentSpeech = null;
+            };
+
+            window.speechSynthesis.speak(currentSpeech);
+        }
+
+        // Setup chat response listener after socket is initialized
+        function setupChatListener() {
+            if (socket) {
+                socket.on('chat_response', function(data) {
+                    // Remove typing indicator
+                    const messagesContainer = document.getElementById('chatbox-messages');
+                    const typing = messagesContainer.querySelector('.typing');
+                    if (typing) typing.remove();
+
+                    // Add agent response with speaker button
+                    addChatMessage(data.response, 'agent', true);
+                });
+            }
+        }
+
+        function init() {
+            typeTerminal();
+            updateDateTime();
+            setInterval(updateDateTime, 1000);
+
+            initGeolocation();
+            renderCriminals();
+            initSampleHistory();
+            renderHistory();
+
+            // Initialize Socket.IO connection
+            initSocketIO();
+
+            // Initialize locate page search
+            initLocateSearch();
+
+            // Initialize Spy Agent chatbox
+            initSpyAgentChat();
+
+            // Setup chat listener after a short delay to ensure socket is ready
+            setTimeout(setupChatListener, 1000);
+        }
+
+        init();
+    </script>
+</body>
+</html>
